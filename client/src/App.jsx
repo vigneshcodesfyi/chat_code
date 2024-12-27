@@ -6,6 +6,7 @@ import LandingPage from "./components/LandingPage";
 import VerifyOTP from "./components/verifyOTP";
 // import Chatboard from "./components/chatContent/Chatboard.jsx";
 import DasbBoard from "./components/chatContent/DasbBoard";
+import GroupCreator from "./components/chatContent/GroupCreater.jsx";
 function App() {
   return (
     <>
@@ -16,6 +17,7 @@ function App() {
           <Route path="/Login" element={<LoginPage />} />
           <Route path="/verify-OTP" element={<VerifyOTP />} />
           <Route path="/chatboard" element={<DasbBoard />} />
+          <Route path="/group" element={<GroupCreator />} />
         </Routes>
       </BrowserRouter>
     </>

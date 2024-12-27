@@ -40,50 +40,53 @@ const userSocketMap = {}; // Store socket.id by user ID
 io.on("connection", (socket) => {
   console.log("A user connected:", socket.id);
 
-  // Register a user by storing their socket ID
   socket.on("register", (userID) => {
-    userSocketMap[userID] = socket.id; // Map userID to socket id
+    userSocketMap[userID] = socket.id;
     console.log(`User ${userID} connected with socket id: ${socket.id}`);
   });
-  socket.setMaxListeners(0);
-  // Handle sending messages
-  const userSocketMap = {}; // Store socket IDs keyed by user IDs
 
-  io.on("connection", (socket) => {
-    console.log("A user connected:", socket.id);
+  socket.on("status", (userID) => {
+    userSocketMap[userID] = socket.id;
+    console.log(userSocketMap[userID]);
+    io.emit("statusUpdate", userID, true);
 
-    // Assume userID is passed during connection (you can customize based on your authentication)
-    socket.on("join", (userID) => {
-      userSocketMap[userID] = socket.id; // Add user to the map
-      console.log(`User ${userID} joined with socket ID ${socket.id}`);
-    });
+    console.log(`${userID} is online`);
+  });
 
-    // Handle message sending
-    socket.on("send_message", (data) => {
-      console.log("Message received:", data);
+  socket.on("join", (userID) => {
+    userSocketMap[userID] = socket.id; // Add user to the map
+    console.log(`User ${userID} joined with socket ID ${socket.id}`);
+  });
 
-      const recipientSocketId = userSocketMap[data.receiverID]; // Get the recipient's socket ID
+  socket.on("send_message", (data) => {
+    console.log("Message received:", data);
 
-      if (recipientSocketId) {
-        // Emit to the recipient's socket
-        socket.to(recipientSocketId).emit("receive_message", data);
-        console.log(`Message sent to user ${data.receiverID}`);
-      } else {
-        console.log(`Recipient with ID ${data.receiverID} not connected`);
+    const recipientSocketId = userSocketMap[data.receiverID];
+    console.log(
+      data.receiverID +
+        "the data is sen to the receiver from the " +
+        data.senderID
+    );
+    console.log(recipientSocketId);
+    if (recipientSocketId) {
+      socket.to(recipientSocketId).emit("receive_message", data);
+
+      console.log(`Message sent to user ${data.receiverID}`);
+    } else {
+      console.log(`Recipient with ID ${data.receiverID} not connected`);
+    }
+  });
+
+  socket.on("disconnect", () => {
+    for (const userID in userSocketMap) {
+      if (userSocketMap[userID] === socket.id) {
+        delete userSocketMap[userID];
+        io.emit("statusUpdate", userID, false);
+
+        console.log(`User ${userID} disconnected`);
+        break;
       }
-    });
-
-    // Handle disconnect event
-    socket.on("disconnect", () => {
-      // Remove user from the map when they disconnect
-      for (const userID in userSocketMap) {
-        if (userSocketMap[userID] === socket.id) {
-          delete userSocketMap[userID];
-          console.log(`User ${userID} disconnected`);
-          break;
-        }
-      }
-    });
+    }
   });
 });
 

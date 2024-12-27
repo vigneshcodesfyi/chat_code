@@ -2,29 +2,30 @@ const express = require("express");
 const router = express.Router();
 const {
   register,
+  status,
   verifyOTP,
   login,
+  getgroup,
   getAllUser,
   logout,
 } = require("../controller/User.controller.js");
 const authendication = require("../middleware/auth.middleware.js");
-const { messageModel } = require("../models/userModel.js");
-
+const { messageModel, groupModel } = require("../models/userModel.js");
 router.post("/user/register", register);
 router.post("/user/verifyOTP", verifyOTP);
 router.post("/user/login", login);
+router.get("/user/status", status);
 
 router.get("/user/getAllUser", authendication, getAllUser);
+router.get("/user/getgroup", getgroup);
 
 router.post("/user/logout", authendication, logout);
 
 router.get(
-  "/user/messages/:receiverID:senderID",
+  "/user/messages/:receiverID/:senderID",
   authendication,
   async (req, res) => {
     const { senderID, receiverID } = req.params;
-    console.log(senderID, receiverID);
-    console.log("came into server");
     try {
       const messages = await messageModel
         .find({
@@ -43,9 +44,7 @@ router.get(
   }
 );
 router.post("/messages/send", async (req, res) => {
-  console.log("came into message folder");
   const { senderID, receiverID, messageContent } = req.body;
-  console.log(senderID, receiverID, messageContent);
   if (!senderID || !receiverID || !messageContent) {
     return res.status(400).json({ message: "All fields are required" });
   }
@@ -67,4 +66,27 @@ router.post("/messages/send", async (req, res) => {
     res.status(500).json({ message: "Error sending message" });
   }
 });
+
+router.post("/group/create", async (req, res) => {
+  try {
+    const { name, members } = req.body;
+
+    if (!name || members.length === 0) {
+      return res
+        .status(400)
+        .json({ message: "Name and members are required." });
+    }
+
+    const newGroup = new groupModel({ name, members });
+    await newGroup.save();
+
+    res
+      .status(201)
+      .json({ message: "Group created successfully.", group: newGroup });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error while creating group." });
+  }
+});
+
 module.exports = router;

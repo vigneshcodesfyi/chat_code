@@ -1,5 +1,9 @@
 const sendVerificationCode = require("../middleware/email/sendVerificationCode.js");
-const { userModel, messageModel } = require("../models/userModel.js");
+const {
+  userModel,
+  messageModel,
+  groupModel,
+} = require("../models/userModel.js");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
@@ -104,6 +108,13 @@ const login = async (req, res) => {
   }
 };
 
+const status = async (req, res) => {
+  const { userId } = req.body;
+  const user = await userModel.find({ _id: userId });
+  const status = user.isOnline;
+  res.status(200).json({ status });
+};
+
 // Logout User
 const logout = async (req, res) => {
   const userId = req.user.id;
@@ -128,15 +139,23 @@ const getAllUser = async (req, res) => {
   const currentUserId = req.user.id;
   console.log(currentUserId);
   try {
-    const users = await userModel.find({ _id: { $ne: currentUserId } }, "name");
+    const users = await userModel.find({ _id: { $ne: currentUserId } });
     const user = await userModel.find({ _id: currentUserId });
-    console.log(user[0].name);
-    console.log(user[0]._id);
     const name = user[0].name;
     const userid = currentUserId;
 
-    console.log(name);
     res.status(200).json({ users, name, userid });
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+const getgroup = async (req, res) => {
+  try {
+    const groups = await groupModel.find();
+
+    res.status(200).json({ groups });
   } catch (error) {
     console.error("Error fetching users:", error);
     return res.status(500).json({ message: "Server error" });
@@ -147,7 +166,8 @@ module.exports = {
   register,
   verifyOTP,
   login,
-
+  getgroup,
   logout,
   getAllUser,
+  status,
 };

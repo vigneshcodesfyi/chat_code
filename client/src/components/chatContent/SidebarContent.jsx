@@ -1,274 +1,332 @@
+import React, { useEffect, useState } from "react";
 import axios from "axios";
-import React, { useEffect, useState, useContext } from "react";
-import { UserContext } from "../../UserContext";
 import { useNavigate } from "react-router-dom";
 import io from "socket.io-client";
+import GroupCreator from "./GroupCreater";
+const socket = io("http://localhost:5000", { withCredentials: true });
 
 const SidebarContentWithNav = () => {
-  const [userData, setUserData] = useState([]);
-  const [error, setError] = useState(null);
-  const [clickedIndex, setClickedIndex] = useState(null);
-  const { selectedUser, setSelectedUser } = useContext(UserContext);
+  const [users, setUsers] = useState([]);
+  const [selectedUser, setSelectedUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [loggedprofile, setloggedprofile] = useState("");
-  const [loggedprofileid, setloggedprofileid] = useState("");
+  const [loggedProfile, setLoggedProfile] = useState({ name: "", id: "" });
   const [loading, setLoading] = useState(true);
-  const socket = io("http://localhost:5000", { withCredentials: true });
+  const [error, setError] = useState(null);
+  const [profileid, setprofileid] = useState(null);
+  const [group, setgroup] = useState([]);
+
   const navigate = useNavigate();
 
-  const handleLogout = async () => {
-    try {
-      const res = await axios.post(
-        "http://localhost:5000/auth/user/logout",
-        {},
-        { withCredentials: true }
-      );
-      if (res.status === 200) {
-        navigate("/login");
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
   useEffect(() => {
-    const fetchUserData = async () => {
+    const fetchgroupData = async () => {
       try {
-        const res = await axios.get(
-          "http://localhost:5000/auth/user/getAllUser",
-          { withCredentials: true }
+        const response = await axios.get(
+          "http://localhost:5000/auth/user/getgroup",
+          {
+            withCredentials: true,
+          }
         );
-        if (Array.isArray(res.data.users)) {
-          setUserData(res.data.users);
-          setloggedprofile(res.data.name);
-          setloggedprofileid(res.data.userid);
-        } else {
-          throw new Error("Invalid data structure");
-        }
+        console.log("api ahs been succesfgul");
+        console.log(JSON.stringify(response.data.groups, null, 2)); // Show groups in a readable format
+        setgroup(response.data.groups);
       } catch (err) {
-        setError(err.message);
+        setError("Failed to fetch group.");
       } finally {
         setLoading(false);
       }
     };
+    fetchgroupData();
+  }, []);
 
+  useEffect(() => {
+    return () => {};
+  }, []);
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const { data } = await axios.get(
+          "http://localhost:5000/auth/user/getAllUser",
+          {
+            withCredentials: true,
+          }
+        );
+        socket.emit("register", data.userid);
+        console.log("before socket status emit");
+        socket.emit("status", data.userid);
+        console.log("after socket status emit");
+
+        setUsers(data.users);
+        setLoggedProfile({ name: data.name, id: data.userid });
+        setprofileid(data.userid);
+      } catch (err) {
+        setError("Failed to fetch users.");
+      } finally {
+        setLoading(false);
+      }
+    };
     fetchUserData();
   }, []);
 
-  const handleClick = (user, index, loggedprofileid) => {
-    setSelectedUser({ name: user.name, id: user._id });
-    setClickedIndex(index);
-    fetchMessages(user._id, loggedprofileid);
-  };
-
-  const fetchMessages = async (userID, loggedprofileid) => {
-    console.log("CAme");
-    console.log(userID);
-    console.log(loggedprofileid);
-
-    setLoading(true);
+  const fetchMessages = async (userId, profileid) => {
     try {
-      const res = await axios.get(
-        `http://localhost:5000/auth/user/messages/${userID}${loggedprofileid}`,
+      console.log("came into tje pmessage");
+      console.log(userId, profileid);
+      const { data } = await axios.get(
+        `http://localhost:5000/auth/user/messages/${userId}/${profileid}`,
         { withCredentials: true }
       );
-      setMessages(res.data.messages);
-      console.log(res.data.messages);
-    } catch (error) {
-      setError("Error fetching messages.");
+      setMessages(data.messages);
+    } catch (err) {
+      setError("Failed to fetch messages.");
     } finally {
       setLoading(false);
     }
   };
-  useEffect(() => {
-    // Event listener for receiving messages
-    socket.on("receive_message", (message) => {
-      if (
-        (message.senderID === selectedUser.id &&
-          message.receiverID === loggedprofileid) ||
-        (message.senderID === loggedprofileid &&
-          message.receiverID === selectedUser.id)
-      ) {
-        setMessages((prevMessages) => [...prevMessages, message]);
-      }
-    });
 
-    // Cleanup on component unmount
-    return () => {
-      socket.disconnect();
-    };
-  }, [selectedUser, loggedprofileid]);
+  // Handle User Selection
+  const handleUserClick = (user) => {
+    setSelectedUser(user);
+    fetchMessages(user._id, profileid);
+  };
+
   const handleSendMessage = async () => {
-    if (newMessage.trim()) {
-      const newMessageData = {
-        senderID: loggedprofileid,
-        receiverID: selectedUser.id,
-        messageContent: newMessage,
-        timestamp: new Date().toISOString(),
-      };
+    if (!newMessage.trim()) return;
+    const messageData = {
+      senderID: loggedProfile.id,
+      receiverID: selectedUser._id,
+      messageContent: newMessage,
+      timestamp: new Date().toISOString(),
+    };
 
-      setMessages((prevMessages) => [...prevMessages, newMessageData]);
-      socket.emit("send_message", newMessageData);
+    setMessages((prev) => [...prev, messageData]);
+    socket.emit("send_message", messageData);
+    setNewMessage("");
 
-      try {
-        await axios.post(
-          "http://localhost:5000/auth/messages/send",
-          newMessageData,
-          { withCredentials: true }
-        );
-      } catch (error) {
-        console.error("Error sending message:", error);
-      }
-
-      setNewMessage("");
+    try {
+      await axios.post(
+        "http://localhost:5000/auth/messages/send",
+        messageData,
+        {
+          withCredentials: true,
+        }
+      );
+    } catch (err) {
+      console.error("Message sending failed", err);
     }
   };
 
-  const filteredUsers = userData.filter((user) =>
+  useEffect(() => {
+    const handleStatusUpdate = async (userID, isOnline) => {
+      console.log(" the Other logged in user is " + userID);
+
+      const response = await axios.get(
+        "http://localhost:5000/auth/user/status",
+        userID,
+        { withCredentials: true }
+      );
+      console.log(
+        "wojed for emitting status asslifhahflahfhsalfgaklsfhglsbvfsjo;haigvdukshlfopadhivbj"
+      );
+      console.log(response.status);
+    };
+
+    socket.on("statusUpdate", handleStatusUpdate);
+
+    return () => {
+      socket.off("statusUpdate", handleStatusUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleMessageReceive = (message) => {
+      console.log("Socket is working", message);
+
+      setMessages((prev) => [...prev, message]);
+    };
+
+    socket.on("receive_message", handleMessageReceive);
+
+    return () => {
+      // socket.off("receive_message", handleMessageReceive);
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await axios.post(
+        "http://localhost:5000/auth/user/logout",
+        {},
+        { withCredentials: true }
+      );
+      navigate("/login");
+    } catch (err) {
+      console.error("Logout failed", err);
+      navigate("/login");
+    }
+  };
+
+  // Filtered Users
+  const filteredUsers = users.filter((user) =>
     user.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
-    <div className="flex h-screen bg-[#f0f2f5]">
-      <div className="w-72 bg-white shadow-lg flex flex-col">
-        <div className="p-4 border-b border-gray-300">
-          <div className="flex items-center mb-4">
-            <div className="rounded-full w-12 h-12 bg-[#128C7E] text-white flex items-center justify-center font-semibold"></div>
-            <div className="ml-4">
-              <p className="text-lg font-bold">{loggedprofile}</p>
+    <div className="flex h-screen bg-gray-100">
+      {/* Sidebar */}
+      <aside className="w-72 bg-white shadow-md flex flex-col">
+        <header className="p-4 border-b">
+          <div className="flex items-center space-x-3">
+            <div className=" ">
+              <div className="w-12 h-12 bg-green-500 text-white flex items-center justify-center rounded-full font-bold">
+                {loggedProfile.name.charAt(0).toUpperCase()}
+              </div>
+            </div>
+
+            <div>
+              <h1 className="text-lg font-bold">{loggedProfile.name}</h1>
               <p className="text-sm text-gray-500">Online</p>
             </div>
           </div>
-
-          <div className="flex mb-4">
-            <button className="flex-1 text-center py-2 font-medium border-b-2 border-[#128C7E]">
-              All
-            </button>
-            <button className="flex-1 text-center py-2 font-medium">
-              Personal
-            </button>
-            <button className="flex-1 text-center py-2 font-medium">
-              Groups
-            </button>
-          </div>
-
           <input
             type="text"
-            placeholder="Search"
+            placeholder="Search users"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#25D366]"
+            className="mt-4 w-full px-3 py-2 border rounded-lg focus:ring focus:ring-green-300"
           />
-        </div>
 
-        <div className="flex-1 overflow-y-auto mt-4">
+          <GroupCreator users={users} />
+        </header>
+        <h1 className="font-bold">Chats</h1>
+
+        <ul className="flex-1 overflow-y-auto">
           {loading ? (
-            <p className="text-center text-gray-400">Loading...</p>
+            <li className="text-center py-4 text-gray-500">Loading...</li>
           ) : error ? (
-            <p className="text-center text-red-300">{`Error: ${error}`}</p>
+            <li className="text-center py-4 text-red-500">{error}</li>
           ) : (
-            filteredUsers.map((user, index) => (
-              <button
-                key={index}
-                onClick={() => handleClick(user, index)}
-                className={`flex items-center space-x-4 p-4 w-full hover:bg-[#d6d9d7] ${
-                  clickedIndex === index ? "bg-[#315551]" : "bg-[#ffffff]"
-                } transition duration-200 ease-in-out`}
+            filteredUsers.map((user) => (
+              <li
+                key={user._id}
+                onClick={() => handleUserClick(user)}
+                className={`p-4 cursor-pointer flex items-center space-x-3 hover:bg-gray-100 ${
+                  selectedUser?._id === user._id ? "bg-green-50" : ""
+                }`}
               >
-                <div className="rounded-full w-12 h-12 bg-[#a6b5b4] text-white flex items-center justify-center font-semibold">
-                  {user.name.charAt(0).toUpperCase()}
+                <div>
+                  {user.isOnline ? (
+                    <div className="flex items-center justify-center gap-6">
+                      <div className="w-10 h-10 bg-green-200 text-black flex items-center justify-center rounded-full border-4 shadow-xl   border-green-800">
+                        {user.name.charAt(0).toUpperCase()}
+                      </div>
+                      <p>{user.name}</p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center gap-6">
+                      <div className="w-10 h-10 bg-white text-black  border-2 border-black flex items-center justify-center rounded-full">
+                        {user.name.charAt(0).toUpperCase()}
+                      </div>
+                      <span>{user.name}</span>
+                    </div>
+                  )}
                 </div>
-                <div className="flex-1">
-                  <span className="text-[#128C7E] font-medium">
-                    {user.name}
-                  </span>
-                </div>
-              </button>
+              </li>
             ))
           )}
-        </div>
+          <h1 className="font-bold">Groups</h1>
+          {loading ? (
+            <li className="text-center py-4 text-gray-500">Loading...</li> // Display loading message
+          ) : error ? (
+            <li className="text-center py-4 text-red-500">{error}</li> // Display error message
+          ) : (
+            // Render groups when data is available
+            group.map((group) => (
+              <li
+                key={group._id} // Unique key for each group
+                className="p-4 cursor-pointer flex items-center space-x-3 hover:bg-gray-100"
+              >
+                <div className="w-10 h-10 bg-gray-300 text-white flex items-center justify-center rounded-full">
+                  {group.name.charAt(0).toUpperCase()}{" "}
+                  {/* Display first letter of the group name */}
+                </div>
+                <span>{group.name}</span> {/* Display group name */}
+              </li>
+            ))
+          )}
+        </ul>
 
         <button
-          className="w-full p-3 text-white bg-red-500 hover:bg-red-600 mt-auto"
           onClick={handleLogout}
+          className="w-full py-3 bg-red-500 text-white hover:bg-red-600"
         >
           Logout
         </button>
-      </div>
+      </aside>
 
-      <div className="flex-1 bg-white flex flex-col">
-        <div className="bg-[#075E54] text-white p-4">
+      {/* Chat Section */}
+      <main className="flex-1 flex flex-col">
+        <header className="bg-green-600 text-white p-4">
           {selectedUser ? (
-            <h2 className="text-2xl font-semibold">{selectedUser.name}</h2>
+            <h2 className="text-xl font-semibold">{selectedUser.name}</h2>
           ) : (
-            <h2 className="text-lg text-gray-300">Select a user to chat</h2>
+            <h2 className="text-lg text-gray-200">
+              Select a user to start chatting
+            </h2>
           )}
-        </div>
+        </header>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {loading ? (
-            <div className="text-center">Loading...</div>
-          ) : selectedUser ? (
-            messages.length > 0 ? (
-              messages.map((msg, index) => (
+        <section className="flex-1 overflow-y-auto p-4 space-y-4">
+          {selectedUser && messages.length > 0 ? (
+            messages.map((msg, index) => (
+              <div
+                key={index}
+                className={`flex ${
+                  msg.senderID === loggedProfile.id
+                    ? "justify-end"
+                    : "justify-start"
+                }`}
+              >
                 <div
-                  key={index}
-                  className={`flex ${
-                    msg.senderID === loggedprofileid
-                      ? "justify-end"
-                      : "justify-start"
+                  className={`max-w-md p-3 rounded-lg shadow-sm ${
+                    msg.senderID === loggedProfile.id
+                      ? "bg-green-500 text-white"
+                      : "bg-gray-200 text-black"
                   }`}
                 >
-                  <div
-                    className={`max-w-[70%] p-3 rounded-lg shadow-sm ${
-                      msg.senderID === loggedprofileid
-                        ? "bg-[#25D366] text-white"
-                        : "bg-[#ECE5DD] text-black"
-                    }`}
-                  >
-                    <span>{msg.messageContent}</span>
-                  </div>
+                  {msg.messageContent}
                 </div>
-              ))
-            ) : (
-              <p className="text-center text-gray-400">
-                No messages to display. Start a conversation.
-              </p>
-            )
+              </div>
+            ))
           ) : (
             <p className="text-center text-gray-400">
-              No messages to display. Select a user to start chatting.
+              No messages yet. Start the conversation!
             </p>
           )}
-        </div>
+        </section>
 
         {selectedUser && (
-          <div className="flex items-center p-4 border-t border-gray-200">
-            <input
-              type="text"
-              placeholder="Type a message..."
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              className="flex-1 px-4 py-2 rounded-lg border border-gray-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#25D366]"
-            />
-            <button
-              onClick={handleSendMessage}
-              className="p-3 ml-3 bg-[#25D366] text-white rounded-full hover:bg-[#128C7E] transition duration-200"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                width="24"
-                height="24"
+          <footer className="p-4 border-t">
+            <div className="flex items-center">
+              <input
+                type="text"
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                placeholder="Type a message"
+                className="flex-1 px-4 py-2 border rounded-lg focus:ring focus:ring-green-300"
+              />
+              <button
+                onClick={handleSendMessage}
+                className="ml-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
               >
-                <path fill="currentColor" d="M3 12l18-9v6l-14 7 14 7v6z" />
-              </svg>
-            </button>
-          </div>
+                Send
+              </button>
+            </div>
+          </footer>
         )}
-      </div>
+      </main>
     </div>
   );
 };
